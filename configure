@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# This is a fake ./configure which generates a wrapper Makefile
+# to call build.sh.   Sneaky!
+
+for i in $@
+do
+
+ case "$i" in
+
+   --help)   ./build.sh --help; exit $? ;;
+       *)     OPTS="$OPTS $i" ;;
+
+
+ esac
+done
+
+
+cat <<END >>Makefile
+# This is a fake Makefile.  For build environments
+# that require ./configure && make.  You really
+# should use the build.sh script directly.
+build:   src/tools/src/lisafsh-tool.c
+	./build.sh build $OPTS
+
+clean:   src/tools/src/lisafsh-tool.c
+	./build.sh clean
+
+install: src/tools/src/lisafsh-tool.c
+	./build.sh build $OPTS --install
+
+package: src/tools/src/lisafsh-tool.c
+	./build.sh build $OPTS  --package
+me:
+	
+a:
+	
+sandwich: me a 
+	[ `id -u` -ne 0 ] && echo "What? Make it yourself." || echo Okay
+
+love:
+	#    "Not war?"
+
+war:
+	#    "Not love?"
+END

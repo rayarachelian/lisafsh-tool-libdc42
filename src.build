@@ -1,0 +1,983 @@
+###############################################################################
+#          Unified Build Script lib  -  A Part of LisaEm
+#                    http://lisaem.sunder.net
+#                   The Lisa Emulator Project
+#   Copyright (C) 2010 Ray A. Arachelian, All Rights Reserved
+# Released under the terms of the GNU General Public License 2.0
+#----------------------------------------------------------------
+#
+# Note that in LisaEm, there are sub-projects which simply
+# have a symbolic link to this include file in order to save
+# space and to make it easier to keep the build.sh consistent.
+#
+# If you need to split off the sub-projects, you should replace
+# the symlinks with this actual file.
+#
+# this is called src.build because it is sourced, and also I
+# didn't want to have build.sh be interfered with when using
+# tab completion within bash.
+#
+# as for why, see: http://varnish-cache.org/docs/phk/autocrap/
+#
+###############################################################################
+
+
+###############################################################################
+###############################################################################
+###  Initialize Platform specific variables    ################################
+###############################################################################
+###############################################################################
+
+
+########## deal with cygwin ###################################################
+# sometimes $CYGWIN is not defined.
+[ -n "`uname | grep -i CYGWIN`" ] && [ -z "$CYGWIN" ] && CYGWIN="`uname | grep CYGWIN`";
+
+if [ -n "$CYGWIN" ]
+then
+EXT=".exe"
+STATIC=--static
+WITHBLITS="-DUSE_RAW_BITMAP_ACCESS"
+
+#7.X and later version. - prefer this one.
+if [ -z "$WXDEV" ]
+then
+if [ -f /proc/registry/HKEY_LOCAL_MACHINE/SOFTWARE/wxdevcpp/Install_Dir ]
+then
+   # yeay, we have the newer version.
+
+   WXWINPATH="`cat /proc/registry/HKEY_LOCAL_MACHINE/SOFTWARE/wxdevcpp/Install_Dir`"
+   WXDEV=`cygpath "$WXWINPATH"`
+   FAILED=0
+
+   if [ ! -x "$WXDEV/bin/gcc.exe" ]
+   then
+       WXDEV=""
+       WXWINPATH=""
+       FAILED=1
+   fi
+
+fi
+fi
+
+# 6.10 version
+if [ -z "$WXDEV" ]
+then
+     if [ -f /proc/registry/HKEY_LOCAL_MACHINE/SOFTWARE/wx-devcpp/Install_Dir ]
+     then
+        WXWINPATH="`cat /proc/registry/HKEY_LOCAL_MACHINE/SOFTWARE/wx-devcpp/Install_Dir`"
+        WXDEV=`cygpath "$WXWINPATH"`
+        FAILED=0
+     fi
+ fi
+
+
+
+if [ -z "$WXDEV" ]
+ then
+  echo "Could not find the wxDev C++ 7.x or 6.10 environment.  Please download and install it"
+  echo "from http://wxdsgn.sourceforge.net/  and install it to C:\\wxDev-Cpp"
+  echo "Do not install it in C:\\Program Files  as the space between Program and Files"
+  echo "will cause problems that will prevent compliation.  Making a link will not help!"
+  exit 1
+fi
+
+if [ -n "`echo $WXDEV | grep ' '`" ]
+then
+ echo "WARNING:"
+ echo "It appears that the installation path for WXDEV contains spaces \"$WXDEV\""
+ echo "this will make it impossible to compile this project."
+ echo
+fi
+
+# windows used to do alpha, ppc, mips, but no more.
+ARCHITECTURE=i586
+if [ $FAILED -eq 0 ]
+then
+ export MINGW="${WXDEV}/lib/gcc/mingw32/*\.*\.*"
+ export MINGCPP="${WXDEV}/include/c++/*\.*\.*"
+ export PATH=${WXDEV}/bin:${MINGW}/libexec:${MINGW}/bin/:${PATH}
+ export CXXINC="-I ${MINGW}/include  -I ${MINGCPP}/backward  -I ${MINGCPP}/mingw32  -I ${MINGCPP}  -I ${WXDEV}/include  -I ${WXDEV}/  -I ${WXDEV}/include/common/wx/msw  -I ${WXDEV}/include/common/wx/generic  -I ${WXDEV}/include/common/wx/fl  -I ${WXDEV}/include/common/wx/gizmos  -I ${WXDEV}/include/common/wx/html  -I ${WXDEV}/include/common/wx/mmedia  -I ${WXDEV}/include/common/wx/net  -I ${WXDEV}/include/common/wx/ogl  -I ${WXDEV}/include/common/wx/plot  -I ${WXDEV}/include/common/wx/protocol  -I ${WXDEV}/include/common/wx/stc  -I ${WXDEV}/include/common/wx/svg  -I ${WXDEV}/include/common/wx/xml  -I ${WXDEV}/include/common/wx/xrc  -I ${WXDEV}/include/common/wx  -I ${WXDEV}/include/common"
+ export CXXDEFS="  -D__WXMSW__ -D__GNUWIN32__ -D__WIN95__ -fno-rtti -fno-exceptions -fno-pcc-struct-return -fstrict-aliasing $WARNINGS -D__WXMSW__ -D__GNUWIN32__ -D__WIN95__   -fexpensive-optimizations -O3"
+ export LIBS="-L `cygpath -wp ${WXDEV}/Lib` -L `cygpath -wp ${WXDEV}/Lib/gcc/mingw32/*\.*\.*/`  -mwindows -lwxmsw28 -lwxmsw28_gl -lwxtiff -lwxjpeg -lwxpng -lwxzlib -lwxregex -lwxexpat -lkernel32 -luser32 -lgdi32 -lcomdlg32 -lwinspool -lwinmm -lshell32 -lcomctl32 -lole32 -loleaut32 -luuid  -ladvapi32 -lwsock32 -lopengl32"
+ export INCS="-I. -I..\\wxui -I ..\\cpu68k -I ..\\hdr -I src\\lib\\libGenerator\\hdr  -I ..\\include -I.\\include  -I src\\include -I src\\printer\\imagewriter\\include -I resources   -I `cygpath -wp $WXDEV/Include` -I `cygpath -wp $WXDEV/include/common`"
+ export OPTS="-D__WXMSW__ -O3 -ffast-math -fomit-frame-pointer -march=$ARCHITECTURE -malign-double -falign-loops=5 -falign-jumps=5 -falign-functions=5 -I ..\\cpu68k -I ..\\include -I . -I.. -I `cygpath -wp $WXDEV/include` -I `cygpath -wp $MING/include` -I `cygpath -wp $WXDEV/Include` -I `cygpath -wp $WXDEV/include/common`"
+
+ export RCINCS="--include-dir=`cygpath -wp ${WXDEV}/include/common` "
+ export DEFINES="-D__WXMSW__ -D__GNUWIN32__ -D__WIN95__ -D __WIN32__"
+ export CXXINCS="-I.  -I src\\lib\\libGenerator\\hdr  -I src\\include -I  src\\printer\\imagewriter\\include -I resources -I ..\\include -I ..\\cpu68k -I ..\\wxui -I `cygpath -wp ${MINGW}/include`  -I `cygpath -wp ${MINGCPP}/backward`  -I `cygpath -wp ${MINGCPP}/mingw32`  -I `cygpath -wp ${MINGCPP}`  -I `cygpath -wp ${WXDEV}/include`  -I `cygpath -wp ${WXDEV}/`  -I `cygpath -wp ${WXDEV}/include/common/wx/msw`  -I `cygpath -wp ${WXDEV}/include/common/wx/generic`  -I `cygpath -wp ${WXDEV}/include/common/wx/fl`  -I `cygpath -wp ${WXDEV}/include/common/wx/gizmos`  -I `cygpath -wp ${WXDEV}/include/common/wx/html`  -I `cygpath -wp ${WXDEV}/include/common/wx/mmedia`  -I `cygpath -wp ${WXDEV}/include/common/wx/net`  -I `cygpath -wp ${WXDEV}/include/common/wx/ogl`  -I `cygpath -wp ${WXDEV}/include/common/wx/plot`  -I `cygpath -wp ${WXDEV}/include/common/wx/protocol`  -I `cygpath -wp ${WXDEV}/include/common/wx/stc`  -I `cygpath -wp ${WXDEV}/include/common/wx/svg`  -I `cygpath -wp ${WXDEV}/include/common/wx/xml`  -I `cygpath -wp ${WXDEV}/include/common/wx/xrc`  -I `cygpath -wp ${WXDEV}/include/common/wx`  -I `cygpath -wp ${WXDEV}/include/common`"
+ export CXXFLAGS="${CXXINCS} ${DEFINES}"
+ #export CFLAGS="${INCS} ${DEFINES} -fno-exceptions -fno-pcc-struct-return -fstrict-aliasing $WARNINGS -Wno-format -Wno-unused -D__WXMSW__ -D__GNUWIN32__ -D__WIN95__   -fexpensive-optimizations -O3"
+ #turn off warnings we don't want for build demo, CODEKARMA FIX THESE! FIXME
+ export CFLAGS="${INCS} ${DEFINES} -fno-exceptions -fno-pcc-struct-return -fstrict-aliasing $WARNINGS                -Wno-empty-body  -Wno-duplicate-decl-specifier  -Wno-constant-logical-operand  -Wno-incompatible-pointer-types  -Wno-implicit-function-declaration   -Wno-enum-conversion   -Wno-unsequenced   -Wno-parentheses  -Wno-tautological-constant-out-of-range-compare  -Wno-format -Wno-implicit-function-declaration  -Wno-unused-parameter  -Wno-unused -Wno-bitfield-constant-conversion -D__WXMSW__ -D__GNUWIN32__ -D__WIN95__   -fexpensive-optimizations -O3"
+ 
+ export GPROF=gprof.exe
+ export RM="rm -f"
+ export LINK=g++.exe
+ export CC=gcc.exe
+ export CPP=g++.exe
+ export CXX=g++.exe
+ #export CFLAGS=$OPTS
+ LINKOPTS="-static $LIBS"
+
+ if [ -z "`gcc.exe --version | grep -i ming`" ]
+ then
+   echo The gcc.exe compiler does not seem to be the mingw version.
+   exit 1
+ fi
+ if [ -z "`g++.exe --version | grep -i ming`" ]
+ then
+   echo The g++.exe compiler does not seem to be the mingw version.
+   exit 1
+ fi
+
+else
+
+ echo "Could not find the wxDev C++ 6.10-2 or newer environment.  Please download and install it"
+ echo "from http://wxdsgn.sourceforge.net/  and install it in c:\\wxDev-Cpp"
+ echo "and not in C:\\Program Files\wxDev-Cpp as the space in 'Program Files' will prevent building"
+ echo
+ echo "If you did install it, perhaps it is the wrong version?"
+
+ exit 1
+fi
+
+else
+
+if [ -z "$WXVER" ]
+then
+WXVER="`wx-config --version`";
+case "$WXVER" in
+  2.9*|3*)
+        echo WARNING: wxWidgets versions higher than 2.8 have not been tested.
+        echo It might work if they are compiled with backwards compatibility.
+        ;;
+  2.8*) ;;
+  *)    echo Could not find wxWidgets 2.8.0 or higher.
+        echo Please install it and ensure that wx-config is in the path
+        exit 1
+  ;;
+esac
+export WXVER
+
+ICANHASUNICODE="`wx-config --selected-config --unicode=yes 2>/dev/null`"
+
+if [ -n "$ICANHASUNICODE" ]
+then
+   UNICODE="--unicode"
+   WITHUNICODE="--unicode=yes"
+else
+   UNICODE="--ansi"
+   WITHUNICODE="--unicode=no"
+fi
+
+
+fi
+
+fi
+########## deal with cygwin ###################################################
+
+
+
+########## deal with OS X ###################################################
+
+#$CYGWIN is pre-set.  Cache $DARWIN so we don't have to call uname over and over.
+[ "`uname`" == "Darwin" ] && DARWIN="Darwin"
+
+
+if [ -z "$PREFIX" ]
+then
+  if [ -n "$DARWIN" ];
+  then
+    PREFIX="/Applications"
+    PREFIXLIB="/Library"
+  else
+      if [ -n "$CYGWIN" ]
+      then
+         PREFIX="/cygdrive/c/Program Files/Sunder.NET/LisaEm"
+         PREFIXLIB="/cygdrive/c/Program Files/Sunder.NET/LisaEm"
+      else
+         PREFIX="/usr/local/"
+         PREFIXLIB="/usr/local/share/"
+      fi
+  fi
+fi
+
+##############################################################################
+##############################################################################
+###   Package Making Functions    ############################################
+##############################################################################
+##############################################################################
+
+
+
+##############################################################################
+#
+# CLONESRCTREE - clones the source tree creating a compressed tar file.
+# this MUST be called from the topmost directory.  Returns the name of clone
+# via stdout.  Call should be like this:  GZFILE="`CLONESRCTREE $TARGET`"
+#
+# $1 is the target directory.  /var/tmp will be used if none is specified.
+#
+# This is used in SRPM package creation.
+#
+##############################################################################
+function CLONESRCTREE()
+{
+ # variables are quoted incase of spaces
+ TARGET="$1"
+ [ -z "$TARGET" ] && TARGET=/var/tmp
+ PWD="`/bin/pwd`"
+ DIR="`basename \"\`/bin/pwd\`\"`"
+ FILENAME="$TARGET/${DIR}.tar.gz"
+ cd ..
+ # pipe to gz since some OS bundled tars (Solaris, AIX) don't know to call gzip
+ # automatically. Prefer gzip over other since it's more likely to be preinstalled
+ # not as lame as good old .Z
+ tar cpf - "$DIR" | gzip -9 >"$FILENAME"
+ cd "$DIR"
+
+# return the file name
+ echo "$FILENAME"
+}
+
+
+##############################################################################
+#
+# This recusively calls the ./build.sh script, but strips off any install,
+# package commands and sets the PREFIX variable to inside the pkg/build/tmp
+# directory.
+#
+# This is used during package creation.  Must be called from the top level dir
+# inside the build.  this must be called with $0 $@ as parameters from the
+# main build.sh program.
+#
+# i.e. BUILDFORPKG $0 $@
+#
+# This function will then set the PREFIX variable and reinvoke the program
+# with the same parameters to compile the code into a temporary dir, and then
+# create a package from it.
+#
+##############################################################################
+
+function BUILDFORPKG()
+{
+ PWD="`/bin/pwd`"
+ DIR="`basename \"\`/bin/pwd\`\"`"
+
+ if [ -d "pkg/build/" ]
+ then
+     CMD="$1"
+     shift
+     FOO=""
+
+     for i in "$@"
+     do
+
+        # strip off any package, install, or prefix options
+        if ( [ "$i" != "--package" ] && [ "$i" !="--install" ] && [ "${i:9}" != "--prefix=" ] )
+        then
+
+          if [ -n "$FOO" ]
+          then     FOO="$FOO \"$i\"";
+          else     FOO="\"$i\"";
+          fi
+
+        fi
+
+     done
+
+     # save the old prefix, incase there is one as creating the pkg requires
+     # a temporary one.
+     OLDPREFIX="$PREFIX"
+
+     TARGETROOT="$DIR/pkg/build/tmp/root"
+     if [ -z "$PKGPREFIX" ];
+	 then  
+	     export PREFIX="$TARGETROOT/usr/local"
+     else
+	         export PREFIX="${TARGETROOT}/${PKGPREFIX}"
+	 fi
+    
+	 mkdir -pm755 $PREFIX || exit $?
+
+     # OS X requires apps be stored under applications
+     [ -n "$DARWIN" ] && mkdir -pm755 "$TARGETROOT/Applications"
+
+     # always do a clean build when installing to be safe, supporess the banner as we have already seen it.
+     $CMD clean build $FOO "--prefix=$PREFIX" --install --quiet
+     ERR="$?"
+
+     if [ "$ERR" -ne 0 ]; then echo "$ERR"; exit $ERR; fi
+
+     # and we're done
+     # restore the old PREFIX
+     PREFIX="$OLDPREFIX"
+ else
+    echo -n "Cannot find pkg/build directory. cwd is:" 1>&2
+    pwd 1>&2
+    exit 1
+ fi
+
+}
+
+
+# this builds Darwin/OS X pkg folders.  These should be archived with zip or tar.gz/tar.bz2
+function BUILD_OSX()
+{
+    TOP="`pwd`"
+    cd pkg || exit $?
+	mkdir -m755 osx || exit $?
+	cd osx || exit 1
+	TARGET="$TOP/pkg/osx"
+	
+	* * * * *
+	PKGNAME= * * * * *
+	
+	RESROOT="$TOP/pkg/osx/$PKGNAME/Resources"
+	DSTROOT="$TOP/pkg/osx/$PKGNAME/dstroot"
+
+    cd "$TOP"
+    BUILDFORPKG $BUILDARGS
+    cd "$TOP/pkg/build/tmp" || exit $?
+	mv "$TOP/pkg/build/tmp" "$DSTROOT"  # since we'll move the build dir
+    mkdir -pm755 "$TOP/pkg/build/tmp"               # recreate it
+    
+    mkdir -pm775 "$RESROOT"
+	
+	
+	# special extended perms on /Applications under OS X needed
+	# drwxrwxr-x+ 93 root  admin  3162 May 28 14:02 /Applications
+    # 0: group:everyone deny delete
+	if [ -d "$DSTROOT" ]
+	then
+	    chmod 775             "$DSTROOT/Applications" 2>/dev/null
+		chown root:admin      "$DSTROOT/Applications" 2>/dev/null
+	fi
+	
+	# we want to install files and links only - directories are dangerous - don't want
+	# this pkg to be the owner of say /opt or /usr/local/bin incase they are symlinks
+	# on target systems, or have different chmod bits than our umask provides, etc.
+	# include any pkginfo, pre/post/check, etc. as needed.
+	# remove . from the local directory.  Should say /usr/local, not ./usr/local
+	PROTO="$TOP/pkg/sol/pkgproto"
+    cat /dev/null                                               >$PROTO
+
+	# Copy and parse upgrade files and other resources.
+	for i in Welcome.rtf Readme.rtf License.rtf Welcome.txt Readme.txt License.txt Welcome.pdf Readme.pdf License.pdf \
+	         InstallationCheck VolumeCheck preflight preinstall postinstall upgrade postflight preupgrade postupgrade
+	do
+	   if [ -f "$TOP/pkg/templates/osx/Resources/$i" ]
+	   then
+		mkdir -pm775 Resources
+		# remember to insert sed filters for text files
+        FILEINFO=`file -b ${i}`
+		case $FILEINFO in
+		  
+		  # remember to insert SED filters here.
+		  Rich\ Text\ Format*|*text*)  cat $TOP/pkg/templates/osx/$i > Resources/$i ;;
+          *)                           cp  $TOP/pkg/templates/osx/$i Resources/$i
+	                                   chmod 775 Resources/$i                       ;;
+
+		esac 
+
+		chmod 755 Resources/$i
+		chown root:wheel Resources/$i
+
+		fi
+	done
+
+	
+	
+}
+
+# this builds Solaris old style packages, not IPS style packages (not yet, will be added in a different fn)
+function BUILD_SOL()
+{
+    TOP="`pwd`"
+    cd pkg || exit $?
+	mkdir -m755 sol || exit $?
+	cd sol || exit 1        # in top/pkg/sol/
+	TARGET="$TOP/pkg/sol"
+    cd "$TOP"
+    BUILDFORPKG $BUILDARGS
+    cd $TOP/pkg/build/tmp || exit $?
+
+	# we want to install files and links only - directories are dangerous - don't want
+	# this pkg to be the owner of say /opt or /usr/local/bin incase they are symlinks
+	# on target systems, or have different chmod bits than our umask provides, etc.
+	# include any pkginfo, pre/post/check, etc. as needed.
+	# remove . from the local directory.  Should say /usr/local, not ./usr/local
+	PROTO="$TOP/pkg/sol/pkgproto"
+    cat /dev/null                                               >$PROTO
+
+	for i in pkgproto preinstall postinstall checkinstall
+	do
+	   if [ -f "$TOP/pkg/templates/sol/$i" ]
+	   then
+	    # insert sed filters here.
+	    cat $TOP/pkg/templates/sol/$i >$i
+		chmod 755 $i
+	    echo "i $i"                                           >> $PROTO
+       fi
+	done
+	
+	# if there's no pkginfo, create one from our vars
+	if [ ! -f pkginfo ]
+	then
+	    (
+	    echo "PKG=\""${CONAM}${lcnam}\""    # i.e. SUNWfoobar
+		echo "NAME=\"$SOFTWARE $VER\""
+		echo "VERSION=\""$VER\""
+		echo "ARCH=\""`uname -p`\""
+        echo "DESC=\""$DESCRIPTION\""		
+		echo "CLASSES=\""none\""
+		echo "CATEGORY=\""application\""
+		echo "VENDOR=\"${VENDOR}\""
+		echo "EMAIL=\"$AUTHEMAIL\""
+		echo "ISTATES=\"S s 1 2 3\""
+		echo "RSTATES=\"S s 1 2 3\""
+		echo "BASEDIR=\"$PREFIX\""
+		) >pkginfo
+	fi
+	
+	# pkg/build/tmp/root is where the binaries were created
+	# TARGET is where the pkg dir/file will be created.
+	(cd root; find . -print ) | pkgproto >> $PROTO
+	pkgmk -o -r "$TOP/pkg/build/tmp/root" -d "$TARGET" -f $PROTO
+    cd "$TARGET"
+	
+	# prepare the pkg name to be compatible with sunfreeware.com, i.e. foobar-2.09-sol10-x86-local.gz
+	OS=`uname -r | sed 's/5\./sol'`
+	# Solaris has Generic in uname -v, open has svn_ but I'm not sure if SVN will stay, so detect generic.
+    [ -z "`uname -v | grep Generic`" ] && OS="o${OS}"
+	
+	machine="`uname -p`"
+	[ "`uname -p`" == "i386"   ] && machine=x86   # sunfreeware expects x86 for i386/x64 packages
+	[ "`uname -p`" == "x86_64" ] && machine=x86
+	
+    # unless prefix was set to /opt, then we mark it as local (for /usr/local/)
+	where=local
+	[ "`echo $PREFIX | grep /opt`" ] && where=opt
+	
+	PKGFILE="${CONAM}${lcnam}-$VER-$OS-$machine-$where"
+    pkgtrans . "$PKGFILE" ${CONAM}${lcnam}
+    gzip -9 $PKGFILE
+	PKGFILE="$PKGFILE.gz"
+	##TODO::uncomment after testing and debugging## rm -rf ${CONAM}${lcnam} "$TOP/pkg/build/tmp/*"; mkdir -pm755 "$TOP/pkg/build/tmp/root"
+	cd $TOP
+}
+
+function BUILD_DEB()
+{
+
+ echo want packagename_version_arch.deb
+
+}
+
+
+function BUILD_RPM()
+{
+    TOP="`pwd`"
+    cd pkg || exit 1
+	mkdir -m755 rpm
+	cd rpm || exit 1        # in top/pkg/rpm/
+    mkdir -m755 BUILD RPMS SOURCES SPECS SRPMS
+    cd SOURCES
+	TARGET="`pwd`"
+    cd "$TOP"
+	SRCGZ=`CLONESRCTREE "$TARGET"`
+    cd ../SPECS
+	
+	if [ -f "$TOP/pkg/templates/rpm.spec" ]
+	then
+       cat  "$TOP/pkg/templates/rpm.spec" | sed -e "s/VERSION/$VERSION/g"  >SPECS/rpm.spec
+    else
+	     (
+          echo "Name: "
+          echo "Version: "
+          echo "Release:	1%{?dist} "
+          echo "Summary:" 
+          echo "Group: "
+          echo "License:" 
+          echo "URL: "
+          echo "Source0: "
+          echo "BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root-%\(%\{__id_u\} -n\)"
+          echo "BuildRequires:" 
+          echo "Requires:"
+          echo "%description"
+          echo "%prep"
+          echo "%setup -q"
+          echo "%build" 
+          echo "./build.sh build"
+          echo "%install"
+		  echo "./build.sh build --install"
+          echo "%clean"
+		  echo "./build.sh clean"
+          echo "%files %defattr\(-,root,root,-\)"
+          echo "%doc"
+          echo "%changelog"
+	    ) >$TOP/pkg/spec
+	fi
+	rpmbuild -v -bb --clean SPECS/rpm.spec
+}
+
+##############################################################################
+#
+# ICANHASPKG - figures out what kind of host we're on, and returns the package
+#              type for it. Not all systems will be able to have package
+#              created for them. Some will support multiple package types.
+#              i.e. you might get back "RPM DEB" if both are supported.
+#             
+#              Note, while your system may use RPM or some other pkg manager
+#              unless the proper developer packages are installed, you might
+#              not be able to create packages.  i.e. need rpm-build needs to
+#              be installed to be able to create RPMs, even though you'll
+#              have the rpm command available.
+#
+##############################################################################
+
+function ICANHASPKG()
+{
+   PKGS=""
+
+   case `uname -s` in
+     AIX)             [ -n "`which rpmbuild 2>/dev/null`" ] && PKGS="RPM $PKGS"
+                      # add check for LPP here
+                      ;;
+
+     Darwin)          PKGS="OSX"  # also look into auto packaging a DMG with the background pngs, etc.
+	                  # Sorry opendarwin, I never knew you, but you'll be missed.
+                      ;;
+
+     SunOS)           [ -n "`which pkgmk 2>/dev/null`" ] && [ -n "`which pkgtrans 2>/dev/null`" ] && [ -n "`which pkgproto 2>/dev/null`" ] && PKGS="SOL $PKGS"
+                      # reminder, check for open solaris here too, might want to do IPS in the future
+					  
+                      # Alas, poor Sun Microsystems, Inc., I knew him well. :(
+                      ;;
+
+     CYGWIN*|Cygwin*) PKGS=""  # don't yet know how to build MSIs, but want to
+                      ;;
+
+     Linux)		     PKGS=""
+					 [ -n "`which rpm-build 2>/dev/null`" ] && PKGS="RPM $PKGS"
+					 [ -n "`which dpkg`" ]                  && PKGS="DEB $PKGS"
+                      ;;
+					  
+					  
+     OpenBSD)        PKGS=""   # don't yet know how to do these yet, but want to.
+                      ;;
+	 FreeBSD)        PKGS=""   # don't yet know how to do these yet, but want to.
+                      ;;
+
+     *)               PKGS=""
+     esac
+
+     echo "$PKGS"
+}
+
+
+##############################################################################
+#
+# MAKEPKG - figures out what kind of host we're on, and builds the appropriate
+#           package(s) for it. Not all systems will be able to have package
+#           created for them, some will have multiple types.  Such is the way
+#           of the tao
+#
+# This is a very simple fn that calls the above fn to get a list of buildable
+# pkgtypes, then calls a build function for each one, which does the work for
+# us.  The resource files and templates must be setup for each of these ahead
+# of time as no parameters are passed.
+#
+# When calling this, cwd must be at the top level of the package. i.e. for
+# lisaem v1.3.0, pwd should be ${whatever}/lisaem-1.3.0/ and the pkg dir
+# must be accessible by doing cd pkg, and its structure must be fully
+# populated with all the resources needed by the various pkg types.
+#
+##############################################################################
+
+function MAKEPKG()
+{
+
+ PKGTYPES="`ICANHASPKG`"
+ if [ -n "$PKGTYPES" ]
+ then
+    for i in `echo $PKGTYPES`
+    do
+        BUILD_${PKGTYPES}
+    done
+ else
+    if [ -z "$ALREADYSORRY" ]
+    then
+      echo "Sorry, I don't know how to make packages for your OS."
+      ALREADYSORRY="Sorry"
+    fi
+ fi
+}
+
+
+##############################################################################
+##############################################################################
+###   Library and Executable  Functions    ###################################
+##############################################################################
+##############################################################################
+
+##############################################################################
+# GETCPUS
+#
+# Gets the number of CPUs available on the machine so we can issue multiple
+# compiles simultaneously
+#
+##############################################################################
+
+function GETCPUS()
+{
+  if [ -z "$NUMCPUS" ]
+  then
+   case `uname -s` in
+     AIX)              NUMCPUS=`lsdev -Ccprocessor | grep -ci available                                              2>/dev/null` ;;
+     Darwin)           #NUMCPUS=`/usr/sbin/ioreg | /usr/bin/egrep -c "+-o CPU.@.*active.*|+-o MacRISC2CPU.*active.*"  2>/dev/null` ;;
+                       NUMCPUS=`sysctl hw.ncpu | grep hw.ncpu: | cut -d' ' -f2`                                                   ;;
+     SunOS)            NUMCPUS=`/usr/sbin/psrinfo  | /usr/bin/grep -ci on-line                                       2>/dev/null` ;;
+     CYGWIN*|Linux)    NUMCPUS=`/usr/bin/grep -c 'processor.*: ' /proc/cpuinfo                                       2>/dev/null` ;;
+     OpenBSD|FreeBSD)  NUMCPUS=`sysctl hw.ncpu | cut -c14-                                                           2>/dev/null` ;;
+   esac
+   [ -z "$NUMCPUS" ] && sysctl hw.ncpu 2>/dev/null| cut -f2 -d:
+   NUMCPUS=$(( $NUMCPUS + 0 )) 2>/dev/null  # in case we get a non-numeric, normalize it.
+   [ $NUMCPUS -lt 1 ] && NUMCPUS=1
+  fi
+
+  #too bad there's no simple way to detect hyperthreads vs real cores on the above.
+  
+  # normalize to a number, just incase we got passed garbage
+  NUMCPUS=`printf "%d\n" "$NUMCPUS" 2>/dev/null`
+  # ensure at least 1
+  [ $NUMCPUS -lt 1 ] && NUMCPUS=1
+
+  export NUMCPUS
+  return $NUMCPUS
+}
+
+
+##############################################################################
+# QJOB
+#
+# Queues up a compilation job in the background and waits for it to complete
+#
+# Parameters $1 text to output
+#	         $2..$N command to execute
+#
+# Waits for an available queue slot, then creates a slot script, and forks it
+# off it the backgroud.  When the job is done, it will erase itself, saving us
+# cleanup steps later on.
+#
+# as it runs, the output file will be named $SLOT.out, but when it's over it
+# will be renamed to $SLOT.done on success of $SLOT.failed.
+#
+# The output will be printed to the stdout when each job finishes.  Failed jobs
+# will print last, and the build script will abort with a failure.
+#
+##############################################################################
+jobnum=0
+
+function QJOB()
+{
+
+  # if we only have one CPU, execute immediately, no need to waste effort queueing
+  GETCPUS
+  if [ $NUMCPUS -eq 1 ]
+  then
+    if [ "${1:0:2}" == "!!" ]
+    then
+    echo "${1:2}"
+    else
+    echo -n  "$1"
+    fi
+    shift
+    $@
+    if [ $? -ne 0 ]; then exit 9; fi
+    return;
+  else
+
+  # make sure we have at least one free slot (and process any completed ones before adding more)
+  WAITQ
+
+  # create a unique job name to launch # we don't care that much about the names, we just want
+  # unique ones.
+
+  jobnum=$(( $jobnum + 1 ))
+  export SLOTNAME="slot.$$.$jobnum.sh"
+
+  while [ -f "$SLOTNAME" ]
+  do
+    #echo "Something went wrong. $SLOTNAME exists!"
+    jobnum=$(( $jobnum + 1 ))
+    export SLOTNAME="slot.$$.$jobnum.sh"
+  done
+
+  (
+   # create the slot script.
+
+
+   echo "#!/bin/bash"                          # shell for our slot script should also be bash
+
+   # $1 is the text to output.  i.e. "!!compiling foobar.c"
+   # if $1 starts with !! then append a newline after it, otherwise, don't.
+   NAME="$1"
+   if [ "${NAME:0:2}" == "!!" ]
+   then
+   echo "echo    \"${NAME:2}\"  >>/tmp/$SLOTNAME.out"    # output $1 to the out file with newline
+   else
+   echo "echo -n \"$NAME\"      >>/tmp/$SLOTNAME.out"    # output $1 to the out file.
+   fi
+   shift                                                 # remove $1 from the list of parameters
+   echo "( $@ 2>&1 ) 2>&1       >>/tmp/$SLOTNAME.out"    # execute $2 with params $3..$N and append to out file
+   echo 'if [ $? -ne 0 ]; then'                          # check for errors.
+   echo "   mv /tmp/$SLOTNAME.out /tmp/$SLOTNAME.failed" # rename to .failed on failure
+   echo 'else'
+   echo "   mv /tmp/$SLOTNAME.out /tmp/$SLOTNAME.done"   # rename to .done on success
+   echo 'fi'
+   echo "rm $SLOTNAME"                                   # clean up
+   echo "exit 0"                                         # and we're done.
+
+  )       > ./$SLOTNAME                                  # create the slot script, make it executable
+  chmod 755 ./$SLOTNAME                                  # make it executable by our user
+  touch                           /tmp/$SLOTNAME.out     # avoid race conditions where QJOB is done, but output file
+                                                         # has been created, but we fall through WAITQALL
+  ./${SLOTNAME} &                                        # launch it in the background.
+
+  fi
+}
+
+
+##############################################################################
+# WAITQALL and WAITQ
+#
+# Waits until (all) queued jobs are complete and outputs results
+# If errors happen, we wait until all other jobs are done, then abort the
+# build script hard.
+#
+##############################################################################
+
+waitqc=0
+function WAITQ()
+{
+
+  GETCPUS
+  # twirly cursor
+  twirl='/-\\|'
+  if [ $NUMCPUS -eq 1 ]; then return; fi
+  /usr/bin/tty -s && TTY="yes" || TTY=""   # don't bother with twirly cursor if non-interactive
+  OUT="/tmp/slot.$$"
+  # wait until we have slots open before enqueing more jobs - might want to change this one.
+  #[ -n "$TTY" ] && echo -n " "
+
+  waitqc=$(( $waitqc + 1 ))
+  [ $waitqc -ge 5 ] && waitqc=0
+  [ -n "$TTY" ] && printf "%c\b" "${twirl:$waitqc:1}"
+  sleep 0.1 2>/dev/null || sleep 1 # osx, linux, cygwin support fractions, solaris, aix do not.
+
+  while [ `ls -l ${OUT}.*.sh.out 2>/dev/null | wc -l` -ge $NUMCPUS ]
+  do
+     waitqc=$(( $waitqc + 1 ))
+     [ $waitqc -ge 5 ] && waitqc=0
+     [ -n "$TTY" ] && printf "%c\b" "${twirl:$waitqc:1}"
+     sleep 0.1 2>/dev/null || sleep 1 # osx, linux, cygwin support fractions, solaris, aix do not.
+  done
+
+  # any successful jobs out there?
+  if [  `ls -l ${OUT}.*.sh.done 2>/dev/null | wc -l` -gt 0 ]
+  then
+     for i in  ${OUT}.*.sh.done
+     do
+        cat "$i"
+        rm -f "$i"
+     done
+  fi
+
+
+ # only check for failed jobs at the end when there are no other jobs running,
+ # otherwise we'd leave behind still in flight successful jobs and junk files.
+ if [ `ls -l ${OUT}.*.sh.out 2>/dev/null | wc -l` -eq 0 ]
+ then
+
+  #echo looking for failed: "`ls slot.$$.*.failed 2>/dev/null`"  >>/tmp/xxx.build.out
+  if [ `ls -l ${OUT}.*.sh.failed 2>/dev/null | wc -l` -gt 0 ]
+  then
+     for i in ${OUT}.*.sh.failed
+     do
+        cat $i
+        rm -f $i
+     done
+     # since there were failed jobs, we have to quit our build. Sorry.
+     sleep 2  # wait a few seconds incase there are any stragglers
+     echo "Aborted!" 1>&2
+     exit 9
+  fi
+ fi
+
+}
+
+
+function WAITQALL()
+{
+  # wait until we have slots open before enqueing more jobs
+  # we don't sleep inside the loop since sleep only allows a minimum of 1 second.
+  # and we want to be able to launch jobs as quickly as possible.  This is a bit of a hog.
+  # sorry.  But with any luck, the multiple copies of GCC we launch will keep our box
+  # busier than our script.
+
+  if [ -z "$NUMCPUS" ]; then GETCPUS;fi
+  if [ $NUMCPUS -eq 1 ]; then return; fi
+
+  OUT="/tmp/slot.$$"  # /tmp/slot.6588.10.sh.done
+
+  while [ `ls -l $OUT.*.sh.out 2>/dev/null | wc -l` -gt 0 ]
+  do
+     WAITQ
+  done
+  WAITQ    # one more to make sure nothing is left to process
+
+  [ -n "$TTY" ] && printf "\b \b"
+}
+
+
+
+##############################################################################
+# MAKELIBS
+#
+# Creates both static and shared libraries.
+#
+# Parameters $1 target directory
+#	     $2 library name
+#            $3 version tripplet.  i.e. 0.3.6
+#            $4 mode "static", "shared", or "both"
+#            $5 is a single string containing objects to merge.
+#               i.e. "a.o b.o c.o ..."
+#
+# i.e.
+#            MAKELIBS  . libGenerator 0.3.6 both "lib68k.o cpu68k-?.o"
+#
+##############################################################################
+function MAKELIBS()
+{
+
+dir="$1"
+libname="$2"
+ver="$3"
+mode="$4"
+objs="$5"
+
+aname="${libname}.${ver}.a"
+laname="${libname}.a"
+daname="${dir}/${aname}"
+ldaname="${dir}/${laname}"
+
+soname="${dir}/${libname}.${ver}.so"
+lsoname="${dir}/${libname}.so"
+ldsoname="${dir}/${libname}.so"
+dsoname="${soname}"
+dylibname="${dir}/${libname}.${ver}.dylib"
+ldylibname="${dir}/${libname}.dylib"
+dllname="${dir}/${libname}.${ver}.dll"
+ldllname="${dir}/${libname}.dll"
+
+[ "$4" == "both" ] && mode="static"
+
+
+if [ "$mode" == "static" ]
+then
+
+     echo "  Creating  $libname.a"
+     ar cru ${daname} ${objs} || exit 1
+     ranlib ${daname}         || exit 1
+     /bin/rm -f       ${ldaname}
+     ln -sf ${daname} ${ldaname}
+fi
+
+
+[ "$4" == "both" ] && mode="shared"
+
+if [ "$mode" == "shared" ]
+then
+
+#pwd
+#which gcc
+case `uname -s` in
+
+   Darwin)   echo "  Creating  $libname.dylib"
+             [ "$HOSTTYPE" == "i386" ] && SIXTYFOURBITS=""
+             if [ "$SIXTYFOURBITS" ]
+             then
+                  L64="-arch x86_64 -m64"         # experimental - because you might want to compile with 64 bit apps under a 32 bit kernel
+             else
+                  L64="-arch `uname -p` -m32"     # set it to the running kernel
+             fi
+             ##nope!##libtool -dynamic -o ${dylibname} $L64 ${objs}           || exit 1
+             gcc $L64 -dynamiclib -Wl,-headerpad_max_install_names,-undefined,dynamic_lookup  \
+                 -install_name /usr/local/lib/${dylibname}                               \
+                 -compatibility_version ${ver} -current_version ${ver}                   \
+                 -o ${dylibname} ${objs}                                      || exit 1
+
+             /bin/rm -f          ${ldylibname}
+             ln -sf ${dylibname} ${ldylibname}                                  ;;
+
+   SunOS)    # not tested yet!
+             echo "  Creating  $libname.so"
+             ld -G -z text -o    ${dsoname} ${objs}                  || exit 1
+             /bin/rm -f          ${ldsoname}
+             ln -sf ${dsoname}   ${ldsoname}                                    ;;
+
+   CYGWIN*)  # really for win32.
+             echo "  Creating  $libname.dll"
+             gcc -shared -o      ${dllname} ${objs}                  || exit 1
+             /bin/rm -f          ${ldllname}
+             ln -sf ${dllname}   ${ldllname}                                    ;;
+             #see: http://www.cygwin.com/cygwin-ug-net/dll.html
+
+   Linux|OpenBSD|FreeBSD)
+             echo "  Creating  $libname.so"
+             gcc -shared -Wl,-soname,${soname} -o ${dsoname} ${objs} || exit 1
+             /bin/rm -f          ${ldsoname}
+             ln -sf ${dsoname}   ${ldsoname}
+             ln -sf ${dsoname}   ${ldsoname}
+                                                                                ;;
+   *)        echo "I don't know how to make a shared library on `uname -s`"
+             exit 1                                                             ;;
+esac
+
+fi
+
+echo -n "" >/dev/null
+}
+
+
+##############################################################################
+#To compile or not to compile.
+#
+#if the .o file exists, compare it to the .c
+#
+# $1 - source file.
+# $2 - object file.
+#
+# if the object file does not exist, it will return true.
+# if the object is older than the source, it will return 0, thus not compiling
+#
+# This is why we don't need make.  Essentially that's what make does, more or less.
+#
+##############################################################################
+
+function NEEDED()
+{
+ if [ -f $2 ]
+ then
+   [ "`ls -tr $2 $1 2>/dev/null| tail -1`" == "$1" ] && return 0
+   return 1
+ fi
+ return 0
+}
+
+
+###################### End of common code for all build.sh scripts ######################
+#/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
+#########################################################################################
