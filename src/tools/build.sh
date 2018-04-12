@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash 
 
 #### Edit these options for your system
 
@@ -20,7 +20,7 @@ WITHUNICODE="--unicode=no"
 ########################################################################
 export VERSION="0.9.7"
 
-for i in get-uintX-types.c libdc42-gpl-license.txt src/lisadiskinfo.c src/lisafsh-tool.c src/patchxenix.c src/xenpatch.c src/dumper.c src/dc42-to-raw.c src/raw-to-dc42.c
+for i in get-uintX-types.c libdc42-gpl-license.txt src/blu-to-dc42.c  src/dc42-to-raw.c  src/dumper.c  src/lisadiskinfo.c  src/lisafsh-tool.c  src/patchxenix.c  src/raw-to-dc42.c  src/rraw-to-dc42.c  src/xenpatch.c
 do
  if [ ! -f ./$i ]
  then
@@ -293,7 +293,7 @@ fi
 cd src
 
 
-for i in lisadiskinfo  lisafsh-tool  xenpatch patchxenix xenpatch dumper raw-to-dc42 dc42-to-raw
+for i in blu-to-dc42 dc42-to-raw dumper lisadiskinfo lisafsh-tool xenpatch patchxenix raw-to-dc42 rraw-to-dc42 
 do
 
   LIST="$LIST ../obj/$i.o"
