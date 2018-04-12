@@ -129,7 +129,8 @@ int main(int argc, char *argv[])
       i=dc42_write_sector_data(&profile,b5, &block[0]);
       if (i) {fprintf(stderr,"\n\nError writing block data %d to dc42 ProFile:%s because %s\n",b,dc42filename,profile.errormsg); dc42_close_image(&profile); exit(1); }
 
-      i=dc42_write_sector_tags(&profile,b5, &block[510]);
+      block[510]=0; block[511]=0; // missing volid tags
+      i=dc42_write_sector_tags(&profile,b5, &block[510]);  // yes this is off by 2 bytes  
       if (i) {fprintf(stderr,"\n\nError writing block tags %d to dc42 ProFile:%s because %s\n",b,dc42filename,profile.errormsg); dc42_close_image(&profile); exit(1); }
 
      }
