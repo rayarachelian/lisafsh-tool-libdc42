@@ -1,111 +1,135 @@
-#!/bin/bash 
+#!/usr/bin/env bash
 
-#### Edit these options for your system
+#------------------------------------------------------------------------------------------#
+# Standard block for each bashbuild script - these are used for copyright notices, packages
+# this standard block ends around line 45
+#------------------------------------------------------------------------------------------#
+
+# ensure we're running from our directory and that we haven't been called from somewhere else
+cd "$(dirname $0)"
+[[ "$(basename $0)" != "build.sh" ]] && echo "$0 must be named build.sh" 1>&2 && exit 9
+
+# As this is the top level script so we force remove any saved envs here before saving new
+# ones, this next line can be optionally added/removed as needed.
+find . -type f -name '.env-*' -exec rm -f {} \;
+# Include and execute unified build library code - this part is critical
+[[ -z "$TLD" ]] && export TLD="${PWD}"
+# set the local top level directory for this build, as we go down into subdirs and run
+# build, TLD will be the top, but XTLD will be the "local" build's TLD.
+export XTLD="$( /bin/pwd )"
+
+if  [[ -x "${TLD}/bashbuild/src.build" ]]; then
+    is_bashbuild_loaded 2>/dev/null || source ${TLD}/bashbuild/src.build
+else
+    echo "$PWD/$0 Cannot find $PWD/bashbuild/src.build" 1>&2
+    echo "This is required as it contains the shared code for the unified build system scripts." 1>&2
+    exit 1
+fi
+
+###########################################################################################
+# if you're making your own package using the src.build system, you'll want to set
+# these variables.  These will help pupulate the appropriate fields in packages.
+###########################################################################################
+   SOFTWARE="dc42 tools"                   # name of the software (can contain upper case)
+     LCNAME="dc42 tools"                   # lower case name used for the directory
+DESCRIPTION="dc42 tools for Apple Lisa"    # description of the package
+        VER="0.9.6"                        # just the version number
+  STABILITY="RELEASE"                      # DEVELOP,ALPHA, BETA, RC1, RC2, RC3... RELEASE
+RELEASEDATE="2020.03.31"                   # release date.  must be YYYY.MM.DD
+     AUTHOR="Ray Arachelian"               # name of the author
+  AUTHEMAIL="ray@arachelian.com"           # email address for this software
+    COMPANY="sunder.net"                   # company (vendor for sun pkg)
+      CONAM="SUNDERNET"                    # company short name for Solaris pkgs
+        URL="https://lisaem.sunder.net"    # url to website of package
+# ----------------------------------------------------------------------------------------
+# vars auto built from the above.
+VERSION="${VER}-${STABILITY}_${RELEASEDATE}"
+BUILDDIR="${LCNAME}-${VER}"             # this should match the base directory name
+
+# copy the arguements given to us as they'll be used again when we make packages
+BUILDARGS="$0 $@"
+export VER STABILITY RELEASEDATE AUTHOR SOFTWARE LCNAME DESCRIPTION COMPANY CONAM URL VERSION BUILDDIR BUILDARGS 
+
+#------------------------------------------------------------------------------------------#
+# end of standard section for all build scripts.
+#------------------------------------------------------------------------------------------#
+
+SRCLIST="patchxenix blu-to-dc42  dc42-resize-to-400k  dc42-dumper  lisadiskinfo  lisafsh-tool dc42-copy-boot-loader lisa-serial-info los-bozo-on los-deserialize idefile-to-dc42 rraw-to-dc42 dc42-to-raw raw-to-dc42 dc42-to-tar"
+
+
 
 WITHDEBUG=""             # -g for debugging, -p for profiling. -pg for both
 
 #STATIC=--static
 WITHOPTIMIZE="-O2 -ffast-math -fomit-frame-pointer"
-WITHUNICODE="--unicode=no"
-
-#if compiling for win32, edit WXDEV path to specify the
-#location of wxDev-CPP 6.10 (as a cygwin, not windows path.)
-#i.e. WXDEV=/cygdrive/c/wxDEV-Cpp
-#if left empty, code below will try to locate it, so only set this
-#if you've installed it in a different path than the default.
-
-#WXDEV=""
-
-
-########################################################################
-export VERSION="0.9.7"
-
-for i in get-uintX-types.c libdc42-gpl-license.txt src/blu-to-dc42.c  src/dc42-to-raw.c  src/dumper.c  src/lisadiskinfo.c  src/lisafsh-tool.c  src/patchxenix.c  src/raw-to-dc42.c  src/rraw-to-dc42.c  src/xenpatch.c
-do
- if [ ! -f ./$i ]
- then
-   echo Could not find $i in `pwd`
-   echo
-   echo "Please run this script from the top level directory. i.e."
-   echo
-   echo "tar xjpvf tools-${VERSION}.tar.bz2"
-   echo "cd tools-${VERSION}"
-   echo "./build.sh $@"
-   exit 1
- fi
-done
-
-
-# Include and execute unified build library code
-if [ -x ./src.build ]
-then
- source ./src.build
-else
- echo "Cannot find src.build include file." 1>&2
- echo "This is required as it contains the shared code for the unified build system scripts." 1>&2
- exit 1
-fi
-
-
+WITHUNICODE=""
 
 
 # turn this on by default.
+for i in $@; do  [[ "$i" == "--no-banner" ]] && NOBANNER=1; done
+if [[ -z "$NOBANNER" ]]; then
+   image ${XTLD}/resources/libdc42-banner.png || (
 
-for i in $@
-do
- [ "$i" == "--no-banner" ] && NOBANNER=1;
-done
-
-if [ -z "$NOBANNER" ]
-then
-
-echo
-echo '----------------------------------------------------------------'
-echo "           dc42 tools ${VERSION}  -   Unified Build Script"
-echo
-echo '                http://lisaem.sunder.net'
-echo '    Copyright (C) 2008 Ray Arachelian, All Rights Reserved'
-echo 'Released under the terms of the GNU General Public License 2.0'
-echo '----------------------------------------------------------------'
-
+      echo ' _____________ --------------------------------------------------------------'
+      echo "| | LisaEm |.| LisaEm dc42 tools ${VERSION}  -   Unified Build Script"
+      echo '| | tools  | |                                                        '
+      echo '| |________| |              http://lisaem.sunder.net'
+      echo '|   ______   | Copyright (C) MMXX Ray Arachelian, All Rights Reserved'
+      echo '|  |    | |  |Released under the terms of the GNU General Public License 2.0'
+      echo '\__|____|_|__| --------------------------------------------------------------'
+   )
 fi
 
+CHECKFILES libdc42-gpl-license.txt $(for i in $SRCLIST; do echo src/$i.c; done)
 
 # Parse command line options if any, overriding defaults.
 
-for i in $@
-do
+[[ -n "$MACOSX_MAJOR_VER" ]] && mkdir -pm 755 "${XTLD}/bin/$MACOSX_MAJOR_VER/"
 
+for i in $@; do
+ i=`echo "$i" | sed -e 's/without/no/g' -e 's/disable/no/g' -e 's/enable-//g' -e 's/with-//g'`
  case "$i" in
+
+  estimate) cd ${XTLD}/src
+            count=0;
+            for s in $SRCLIST; do
+               needed ${s}.c "../bin/$MACOSX_MAJOR_VER/${s}${EXT}" && count=$(( $count + 1 ))
+            done
+            echo $count
+            return 2>/dev/null >/dev/null #incase we're called directly 
+            exit 0
+            ;;
   clean)
+            cd ${XTLD}/obj
             echo "* Removing fsh tools objs and bins"
-            rm -f .last-opts last-opts
-            cd ./bin   && /bin/rm -f *
-            cd ../obj  && /bin/rm -f *.a *.o get-uintX-types*
-            cd ..
+            CLEANARTIFACTS  "*.a" "*.o" "*.dylib" "*.so" .last-opts last-opts machine.h "*.exe" get-uintX-types*
+            cd "${XTLD}/bin/${MACOSX_MAJOR_VER}/" && for b in $SRCLIST; do rm -f ${b}${EXT}; rm -rf "${b}.dSYM"; done
 
             #if we said clean install or clean build, then do not quit
             Z="`echo $@ | grep -i install``echo $@ | grep -i build`"
-            [ -z "$Z" ] && exit 0
+            [[ -z "$Z" ]] && return 2>/dev/null >/dev/null
+            [[ -z "$Z" ]] && exit 0
 
-  ;;
+            ;;
  build*)    echo ;;    #default - nothing to do here, this is the default.
  install)
-            [ -z "$CYGWIN" ] && [ "`whoami`" != "root" ] && echo "Need to be root to install. try sudo ./build.sh $@" && exit 1
-            INSTALL=1;
+            if [[ -z "$CYGWIN" ]]; then
+               [[ "`whoami`" != "root" ]] && echo "Need to be root to install. try: sudo ./build.sh $@" && exit 1
+            else
+                CygwinSudoRebuild $@
+            fi
+            INSTALL=1
             ;;
 
  uninstall)
-           if [ -n "$DARWIN" ];
-           then
+           if [[ -n "$DARWIN" ]]; then
              echo Uninstall commands not yet implemented.
              exit 1
            fi
 
-           if [ -n "$CYGWIN" ];
-           then
-              [ -n "$PREFIX" ]    && echo Deleting $PREFIX    && rm -rf $PREFIX
-              [ -n "$PREFIXLIB" ] && echo Deleting $PREFIXLIB && rm -rf $PREFIXLIB
+           if [[ -n "$CYGWIN" ]]; then
+              [[ -n "$PREFIX" ]]    && echo Deleting $PREFIX    && rm -rf $PREFIX
+              [[ -n "$PREFIXLIB" ]] && echo Deleting $PREFIXLIB && rm -rf $PREFIXLIB
               exit 0
            fi
 
@@ -116,40 +140,50 @@ do
 
            echo Uninstalling from $PREFIX and $PREFIXLIB
            rm -rf $PREFIXLIB/lisaem/
-           rm -f  $PREFIX/lisaem
-           rm -f  $PREFIX/lisafsh-tool
-           rm -f  $PREFIX/lisadiskinfo
-           rm -f  $PREFIX/patchxenix
-
+	   for i in $SRCLIST; do rm -rf $PREFIX/${i}${EXT}; done
            exit 0
 
     ;;
 #DEBUG DEBUGMEMCALLS IPC_COMMENTS
 
- --32)                         SIXTYFOURBITS=""                          ;;
- --64)                         SIXTYFOURBITS="--64"                      ;;
+  -64|--64|-m64)
+                               export SIXTYFOURBITS="--64"; 
+                               export THIRTYTWOBITS="";
+                               export ARCH="-m64"; export SARCH="-m64"  ;;
 
- --without-debug)              WITHDEBUG=""
+  -32|--32|-m32)
+                               export SIXTYFOURBITS=""; 
+                               export THIRTYTWOBITS="--32"; 
+                               [[ "$MACHINE" == "x86_64" ]] && export MACHINE="i386"
+                               export ARCH="-m32" ; export SARCH="-m32"  ;;
+
+ --no-debug)                   WITHDEBUG=""
                                WARNINGS=""                               ;;
 
- --with-debug)                 WITHDEBUG="$WITHDEBUG -g"
-                               WARNINGS="-Wall"                          ;;
+ --debug)                      WITHDEBUG="$WITHDEBUG -g"
+                               WARNINGS="-Wall -Wextra -Wno-write-strings -g -DDEBUG" ;;
 
+-D*)                           EXTRADEFINES="${EXTRADEFINES} ${i}";;
 
- --with-profile)               WITHDEBUG="$WITHDEBUG -p"                 ;;
+ --profile)                    WITHDEBUG="$WITHDEBUG -p"                 ;;
 
- --with-tracelog)              WITHTRACE="-DDEBUG -DTRACE"
+ --tracelog)                   WITHTRACE="-DDEBUG -DTRACE"
                                WARNINGS="-Wall"                          ;;
  --no-banner)                  NOBANNER="1";                             ;;
+
+
+ -march=*)                     export ARCH="${i} $ARCH"                  ;;
+
+ -arch=*)                      export ARCH="$(echo ${i} | sed -e 's/=/ /g') $ARCH"
+                               export SARCH="$i $SARCH"                  ;;
+
  *)                            UNKNOWNOPT="$UNKNOWNOPT $i"               ;;
  esac
 
 done
 
 
-
-if [ -n "$UNKNOWNOPT" ]
-then
+if [[ -n "$UNKNOWNOPT" ]]; then
  echo
  echo "Unknown options $UNKNOWNOPT"
  cat <<ENDHELP
@@ -182,48 +216,32 @@ exit 1
 
 fi
 
-[ -n "${WITHDEBUG}${WITHTRACE}" ] && if [ -n "$INSTALL" ];
-then
+[[ -n "${WITHDEBUG}${WITHTRACE}" ]] && if [[ -n "$INSTALL" ]]; then
    echo "Warning, will not install since debug/profile/trace options are enabled"
    echo "as Install command is only for production builds."
    INSTALL=""
 fi
 
-if [ -n "${WITHDEBUG}${WITHTRACE}" ]
-then
-  WITHOPTIMIZE="-O2 -ffast-math"  #disable optimizations that break gdb operations
-fi
-
-#if we're not on Cygwin, then setup the defaults, unless
-#they were defined already from the parent shell.
-if [ -z "$CYGWIN" ]
-then
- [ -z "$CC" ] && CC=gcc
- [ -z "$CXX" ] && CXX=g++
- [ -z "$GPROF" ] && GPROF=gprof
-fi
-
 ###########################################################################
+create_machine_h
 
 # Has the configuration changed since last time? if so we may need to do a clean build.
-[ -f .last-opts ] && source .last-opts
+[[ -f .last-opts ]] && source .last-opts
 
 needclean=0
 
 MACHINE="`uname -mrsv`"
-[ "$MACHINE"   != "$LASTMACHINE" ] && needclean=1
+[[ "$MACHINE"   != "$LASTMACHINE" ]] && needclean=1
 #debug and tracelog changes affect the whole project, so need to clean it all
-[ "$WITHTRACE" != "$LASTTRACE" ] && needclean=1
-[ "$WITHDEBUG" != "$LASTDEBUG" ] && needclean=1
+[[ "$WITHTRACE" != "$LASTTRACE" ]] && needclean=1
+[[ "$WITHDEBUG" != "$LASTDEBUG" ]] && needclean=1
 # display mode changes affect only the main executable.
 
-if [ "$needclean" -gt 0 ]
-then
+if [[ "$needclean" -gt 0 ]]; then
    rm -f .last-opts last-opts
-   cd bin         && /bin/rm -f *
-   cd ../obj      && /bin/rm -f *.a *.o
+   cd "bin/$MACOSX_MAJOR_VER"         && /bin/rm -f *
+   cd ${XTLD}/obj      && /bin/rm -f *.a *.o
    cd ..
-
 fi
 
 echo "LASTDEBUG=\"$WITHDEBUG\""  >>.last-opts
@@ -231,108 +249,68 @@ echo "LASTMACHINE=\"$MACHINE\""  >>.last-opts
 
 ###########################################################################
 
-if [ -n "$DARWIN" ]
-then
-   if [ -n "$SIXTYFOURBITS" ]
-   then
-     #echo 64 bits on
-     CFLAGS="$CFLAGS     -arch x86_64 -m64"
-     CPPFLAGS="$CFLAGS   -arch x86_64 -m64"
-     CXXFLAGS="$CXXFLAGS -arch x86_64 -m64"
-   else
-     #echo 32 bits on
-     CFLAGS="$CFLAGS     -arch i386 -m32"
-     CPPFLAGS="$CFLAGS   -arch i386 -m32"
-     CXXFLAGS="$CXXFLAGS -arch i386 -m32"
-   fi
-fi
+# :TODO: un-silence warnings for demos and fix code
 
-     # CODEKARMA FIXME FIXME silence warnings for demos
-     CFLAGS="$CFLAGS                -Wno-empty-body  -Wno-duplicate-decl-specifier  -Wno-constant-logical-operand  -Wno-incompatible-pointer-types  -Wno-implicit-function-declaration   -Wno-enum-conversion   -Wno-unsequenced   -Wno-parentheses  -Wno-tautological-constant-out-of-range-compare  -Wno-format -Wno-implicit-function-declaration  -Wno-unused-parameter  -Wno-unused -Wno-bitfield-constant-conversion"
-
+CFLAGS="$CFLAGS   $NOEMPTYBODY $NODUPEDECL $NOINCOMPATIBLEPTR -Wno-implicit-function-declaration \
+                  -Wno-parentheses  -Wno-format -Wno-implicit-function-declaration \
+                  -Wno-unused-parameter  -Wno-unused "
 
 echo Building lisa disk utilities...
 echo
+
+# Check to see if libdc42 exists locally, or globally
 WHICHLIBDC42="`ls ../lib/libdc42/lib/libdc42.*.a 2>/dev/null`"
-if [ -z "$WHICHLIBDC42" ]
-then
-   [ -f "/usr/local/lib/libdc42.*.a" ] && WHICHLIBDC42="/usr/local/lib/libdc42.*.a" && DC42INCLUDE="/usr/local/include/libdc42.h"
-   [ -f "/usr/lib/libdc42.*.a" ]       && WHICHLIBDC42="/usr/lib/libdc42.*.a" && DC42INCLUDE="/usr/include/libdc42.h"
+if [[ -z "$WHICHLIBDC42" ]]; then
+   [[ -f "/usr/local/lib/libdc42.*.a" ]] && WHICHLIBDC42="/usr/local/lib/libdc42.*.a" && DC42INCLUDE="/usr/local/include/libdc42.h"
+   [[ -f "/usr/lib/libdc42.*.a" ]]       && WHICHLIBDC42="/usr/lib/libdc42.*.a" && DC42INCLUDE="/usr/include/libdc42.h"
 else
-   DC42INCLUDE="../../lib/libdc42/hdr"
+   DC42INCLUDE="../../lib/libdc42/include"
 fi
 
-if [ -n "$WHICHLIBDC42" ]
-then
-   #echo "  Using $WHICHLIBDC42"
+# if not found, build it by calling subbuild
+if [[ -n "$WHICHLIBDC42" ]]; then
    WHICHLIBDC42="../$WHICHLIBDC42"
 else
-   cd ../lib/libdc42/ && ./build.sh --no-banner
-   WHICHLIBDC42="`ls ../lib/libdc42/lib/libdc42.*.a 2>/dev/null`"
-   if [ ! -f "$WHICHLIBDC42" ]; then exit 1; fi
-   DC42INCLUDE="../../lib/libdc42/hdr"
+   subbuild src/lib/libdc42      --no-banner             $SIXTYFOURBITS $SARCH
+   WHICHLIBDC42="`ls src/lib/libdc42/lib/libdc42.*.a 2>/dev/null`"
+   if [[ ! -f "$WHICHLIBDC42" ]]; then exit 1; fi
+   DC42INCLUDE="../../lib/libdc42/include"
    WHICHLIBDC42="../$WHICHLIBDC42"
 fi
 
-
-[ ! -f ./hdr/machine.h ] && needclean=1
-
-if [ "$needclean" -gt 0 ]
-then
-
- $CC -Wall get-uintX-types.c -o ./obj/get-uintX-types || exit 1
- cd ./hdr
- ../obj/get-uintX-types
- if [ "$?" -ne 0 ]; then
-    echo something went wrong finding type information.
-    exit 1
- fi
-cd ..
-fi
+create_machine_h
 
 cd src
 
+# if we're being called as the main program
+[[ -z "$PERCENTPROGRESS" ]] && export PERCENTPROGRESS=0 
+[[ -z "$PERCENTCEILING"  ]] && export PERCENTCEILING=$(wc -w <<< "$SRCLIST" )
 
-for i in blu-to-dc42 dc42-to-raw dumper lisadiskinfo lisafsh-tool xenpatch patchxenix raw-to-dc42 rraw-to-dc42 
-do
+export COMPILECOMMAND="$CC $CLICMD -o :OUTFILE: -W $WARNINGS -Wstrict-prototypes $WITHDEBUG $WITHTRACE $ARCH $CFLAGS -I $DC42INCLUDE $INC -Wno-format -Wno-unused :INFILE:.c $WHICHLIBDC42"
+LIST1=$(WAIT="yes" OBJDIR="../bin/$MACOSX_MAJOR_VER/" INEXT=c OUTEXT="${EXTTYPE}" VERB="Compiled                 " COMPILELIST \
+	$(for i in $SRCLIST; do echo $i; done) )
 
-  LIST="$LIST ../obj/$i.o"
+if [[ -z "$XTLD" ]]; then
+   echo "Error XTLD is empty" 1>&2
+   exit 99
+fi
 
-  DEPS=0
-  [ "$DEPS" -eq 0 ] && if NEEDED ${i}.c            ../obj/${i}.o;then DEPS=1; fi
-  if [ "$DEPS" -gt 0 ]
-  then
-     echo "  Compiling ${i}.c..."
-     #pwd
-     #which $CC
-     #echo
-     $CC -W $WARNINGS -Wstrict-prototypes -I $DC42INCLUDE -I./hdr -Wno-format -Wno-unused  $WITHDEBUG $WITHTRACE $CFLAGS -c ${i}.c -o ../obj/${i}.o || exit 1
-     if [ "$i" == "patchxenix" ]
-     then
-        $CC -W $WARNINGS -Wstrict-prototypes -I $DC42INCLUDE -I./hdr -Wno-format -Wno-unused  $WITHDEBUG $WITHTRACE $CFLAGS ../obj/${i}.o  ../obj/xenpatch.o "$WHICHLIBDC42" -o ../bin/$i || exit 1
-     else
-        if [ "$i" != "xenpatch" ]
-        then
-          $CC -W $WARNINGS -Wstrict-prototypes -I $DC42INCLUDE -I./hdr -Wno-format -Wno-unused  $WITHDEBUG $WITHTRACE $CFLAGS ../obj/${i}.o                    "$WHICHLIBDC42" -o ../bin/$i || exit 1
-        fi
-     fi
-  fi
-done
+cd "${XTLD}/bin/$MACOSX_MAJOR_VER"
+strip_and_compress $(for i in $SRCLIST; do echo ${i}${EXT}; done)
 
 ###########################################################################
 
-if [ -n "$INSTALL" ]
-    then
-      cd ../bin/
-      [ -n "$DARWIN" ] && PREFIX=/usr/local/bin  # these shouldn't go into /Applications
-      echo Installing tools to $PREFIX/bin
-      mkdir -pm755 $PREFIX/bin 2>/dev/null
-      for i in lisadiskinfo  lisafsh-tool  patchxenix  raw-to-dc42 dc42-to-raw
-      do
-           cp ${i}* $PREFIX/bin/ || exit 1
+if [[ -n "$INSTALL" ]]; then
+      cd "${XTLD}/bin/x/$MACOSX_MAJOR_VER"
+      [[ -n "$DARWIN" ]] && PREFIX=/usr/local/bin  # these shouldn't go into /Applications
+      echo "Installing tools to $PREFIX/bin"
+      mkdir -pm755 "$PREFIX/bin" 2>/dev/null
+      # * is for .exe on windows
+      for i in $SRCLIST; do
+         cp ${i}${EXT} "$PREFIX/bin/" || exit 1
       done
       cd ..
-    fi
+fi
 echo
-[ -z "$NOBANNER" ] && echo Build Done.
-exit 0
+[ -z "$NOBANNER" ] && echo "Disk Tools build done."
+true

@@ -1,6 +1,3 @@
 #!/bin/bash
-TOP="$(pwd)"
-cd $TOP/src/lib/libdc42
-./build.sh $@ || exit $?
-cd $TOP/src/tools
+cd $(dirname $0)/src/tools || exit 1
 ./build.sh $@

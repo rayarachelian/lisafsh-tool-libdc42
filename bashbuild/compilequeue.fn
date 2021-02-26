@@ -1,0 +1,308 @@
+###############################################################################
+#          Unified Build Script lib  -  A Part of LisaEm
+#                    http://lisaem.sunder.net
+#                   The Lisa Emulator Project
+#   Copyright (C) 2020 Ray A. Arachelian, All Rights Reserved
+# Released under the terms of the GNU General Public License 2.0
+#----------------------------------------------------------------
+#
+# Multi-processor compilation Queue
+#
+###############################################################################
+
+#---------------------------------------------------------------------------------------------
+# trim duplicate arguements, but keep any -I -L path args used for compilation and keep all
+# other arguements in the order they were received. Used to remove duplicate things like
+# -DDEBUG or -W-no-warn-blah from various appended strings to clean up compilation calls
+#--------------------------------------------------------------------------------------------
+
+function trim_duplicate_args() {
+  local SEEN=""
+  local ARGS=""
+  for var in "$@"; do
+      if [[ -z "$( echo $SEEN | grep :::$var::: | egrep -v ':::-L:::|:::-I:::|:::-framework:::' )" ]]; then
+         ARGS="$ARGS $var"
+         SEEN="$SEEN :::$var::: "
+      fi
+  done
+
+echo "${ARGS}"
+}
+#--------------------------------------------------------------------------------------------
+
+
+##############################################################################
+# qjob
+#
+# Queues up a compilation job in the background and waits for it to complete
+#
+# Parameters $1 text to output if it starts w/!! newline, else nonewline
+#	           $2..$N command to execute
+#
+# Waits for an available queue slot, then creates a slot script, and forks it
+# off it the backgroud.  When the job is done, it will erase itself, saving us
+# cleanup steps later on.
+#
+# as it runs, the output file will be named $SLOT.out, but when it's over it
+# will be renamed to $SLOT.done on success of $SLOT.failed.
+#
+# The output will be printed to the stdout when each job finishes.  Failed jobs
+# will print last, and the build script will abort with a failure.
+#
+##############################################################################
+jobnum=0
+
+function qjob {
+
+   if [[ -z "$2" ]]; then
+      echo "qjob: $PWD qjob Missing Parameters $@ passed" 1>&2
+      exit 9
+   fi
+
+   NAME="$1"
+
+   # if we only have one CPU, execute immediately, no need to waste effort queueing
+   getcpus
+   [[ $NUMCPUS -eq 1 ]] && export NUMCPUS=2
+
+    # make sure we have at least one free slot (and process any completed ones before adding more)
+    waitq
+
+    # create a unique job name to launch # we don't care that much about the names, we just want
+    # unique ones.
+    jobnum=$(( $jobnum + 1 ))
+    export SLOTNAME="slot.$$.${jobnum}.sh"
+    while [[ -f "$SLOTNAME" ]]; do
+      jobnum=$(( $jobnum + 1 ))
+      export SLOTNAME="slot.$$.${jobnum}.sh"
+    done
+
+    # ------------------------------------------------------------------------------------------------
+    # create the compile slot script in the current directory and execute it. It will delete itself
+    # on completion and copy itself to /tmp if needed. We don't execute from /tmp because in many
+    # systems /tmp is mounted with -o noexec
+    # ------------------------------------------------------------------------------------------------
+
+     # $1 is the text to output.  i.e. "!!compiling foobar.c"
+     # if $1 starts with !! then append a newline after it, otherwise, don't.
+     NAME="$1"
+     shift                                                     # remove $1 from the list of parameters
+     CMD="$( trim_duplicate_args $@ )"
+
+     # pre-seed the output file before launching the script.
+     echo "$CMD"              >>/tmp/${SLOTNAME}.out           # save compile command
+     echo "in: $( /bin/pwd )" >>/tmp/${SLOTNAME}.out
+     echo ""                  >>/tmp/${SLOTNAME}.out
+     echo "${NAME}"           >>/tmp/${SLOTNAME}.out           # output Name to the out file with newline
+
+    ( # shell for our slot script should also be bash
+     echo "#!/usr/bin/env bash"                          
+
+     echo
+     echo "trap - EXIT"
+     echo
+
+     echo "( ${CMD} 2>&1 ) 2>&1 >>/tmp/${SLOTNAME}.out"        # execute $2 with params $3..$N and append to out file
+                                                               # we don't want this going to the tty!
+     echo
+     echo 'if [[ $? -ne 0 ]]; then'                            # check for errors.
+     echo "   cp ${SLOTNAME} /tmp"                             # keep the failed job in /tmp for later analysis
+     echo
+     echo "   echo \"see: /tmp/${SLOTNAME} /tmp/${SLOTNAME}.failed for details\" >>/tmp/${SLOTNAME}.out"
+     echo "   echo \"failed command was: $@\" >>/tmp/${SLOTNAME}.out"
+     echo "   echo \"from: \$(/bin/pwd)\" >>/tmp/${SLOTNAME}.out"
+     echo "   mv /tmp/${SLOTNAME}.out /tmp/${SLOTNAME}.failed" # rename to .failed on failure, this acts as releasing a lock
+     echo 'else'
+     echo "   mv /tmp/$SLOTNAME.out /tmp/${SLOTNAME}.done"     # rename to .done on success, this acts as releasing a lock
+     echo 'fi'
+     echo "rm ${SLOTNAME}"                                     # self-remove the slot script
+     echo "exit 0"                                             # and we're done.
+    )       > ./${SLOTNAME}                                    # create the slot script, make it executable
+
+    chmod 755 ./${SLOTNAME}                                    # make it executable by our user
+
+    (./${SLOTNAME} 1>&2) 1>&2 &                                # launch it in the background, output that hasn't been saved
+                                                               # to slot.x.outfile goes to stderr, not stdout!
+#  fi
+}
+
+
+##############################################################################
+# waitqall and waitq
+#
+# Waits until (all) queued jobs are complete and outputs results
+# If errors happen, we wait until all other jobs are done, then abort the
+# build script hard.
+#
+##############################################################################
+
+waitqc=0
+function waitq()
+{
+  local l=""
+  getcpus
+  twirl='/-\\|' # twirly cursor
+  [[ $NUMCPUS -eq 1 ]] && export NUMCPUS=2
+  /usr/bin/tty -s && TTY="yes" || TTY=""   # don't bother with twirly cursor if non-interactive
+  OUT="/tmp/slot.$$"
+
+  # wait until we have slots open before enqueing more jobs 
+  #[[ -n "$TTY" ]] && echo -n " " 1>&2
+
+  waitqc=$(( $waitqc + 1 ))
+  [[ $waitqc -ge 5 ]] && waitqc=0
+
+  [[ -n "$TTY" ]] && printf "%c\b" "${twirl:$waitqc:1}" 1>&2
+  sleep 0.1 2>/dev/null || sleep 1 # osx, linux, cygwin support fractions, solaris, aix do not.
+
+  while [[ `ls -l ${OUT}.*.sh.out 2>/dev/null | wc -l` -ge $NUMCPUS ]]
+  do
+     #waitqc=$(( $waitqc + 1 ))
+     #if [[ $waitqc -ge  ]]; then 
+     #   waitqc=0
+        update_progress_bar "${PERCENTPROGRESS}" "${PERCENTJOB}" "${NUMJOBSINPHASE}" "${PERCENTCEILING}"
+     #fi
+     [[ -n "$TTY" ]] && printf "%c\b" "${twirl:$waitqc:1}" 1>&2
+     sleep 0.1 2>/dev/null || sleep 1 # osx, linux, cygwin support fractions, solaris, aix do not.
+  done
+
+  # any successful jobs out there?
+  if [[  `ls -l ${OUT}.*.sh.done 2>/dev/null | wc -l` -gt 0 ]]; then
+     for z in  ${OUT}.*.sh.done; do
+
+        # skip over the compile command and current dir lines then output only 5 lines at most to highlight some warnings
+        # or errors if there are some, but output a newline at the end (for !! jobs) this will output the job name
+        # if there are no errors
+
+        (
+           local count=0; 
+           echo "---------------------- $z -----------------------" >>${BUILDWARNINGS}
+           while IFS= read -r -u42 l; do
+                 count=$(( count + 1))
+                 if [[ $count -gt 3 ]] && [[ $count -lt 9 ]]; then 
+                    [[ "${l:0:2}" != '!!' ]] && printf "%s" "${l}" 1>&2 || printf "%s\n" "${l:2}" 1>&2
+                 else
+                    [[ $count -eq 9       ]] && printf "%s" "$l" 1>&2
+                 fi
+                 echo "$l" >>${BUILDWARNINGS}
+           done 42<"$z"
+           [[ "$count" -gt 8 ]] && echo "..."
+        ) 1>&2
+
+        # save warnings from the slot output file to build warnings
+        #echo "---------------------- $z -----------------------" >>${BUILDWARNINGS}
+        #DEBUG-KEEP#cp "$z" "$z.final"
+        rm -f "$z"
+
+        # update progress bar
+        [[ -z "$PERCENTJOB" ]] && PERCENTJOB=0
+        export PERCENTJOB="$(( $PERCENTJOB +1 ))"
+
+        # if [[ -z "$PERCENTPROGRESS" ]]; then echo "$PWD waitq: 1 PERCENTPROGRESS is empty" 1>&2; exit 9; fi
+        # if [[ -z "$PERCENTJOB"     ]];  then echo "$PWD waitq: 2 PERCENTJOB is empty"      1>&2; exit 9; fi
+        # if [[ -z "$NUMJOBSINPHASE" ]];  then echo "$PWD waitq: 3 NUMJOBSINPHASE is empty"  1>&2; exit 9; fi
+        # if [[ -z "$PERCENTCEILING" ]];  then echo "$PWD waitq: 4 PERCENTCEILING is empty"  1>&2; exit 9; fi
+
+        update_progress_bar "${PERCENTPROGRESS}" "${PERCENTJOB}" "${NUMJOBSINPHASE}" "${PERCENTCEILING}"
+     done
+  fi
+
+
+ # only check for failed jobs at the end when there are no other jobs running,
+ # otherwise we'd leave behind still in flight successful jobs and junk files.
+ if [[ `ls -l ${OUT}.*.sh.out 2>/dev/null | wc -l` -eq 0 ]]; then
+
+  #echo looking for failed: "`ls slot.$$.*.failed 2>/dev/null`"  >>/tmp/xxx.build.out
+  if [[ `ls -l ${OUT}.*.sh.failed 2>/dev/null | wc -l` -gt 0 ]]; then
+     sleep 3  # wait a few seconds incase there are any stragglers/failed jobs
+     for z in ${OUT}.*.sh.failed
+     do
+        # rename failed job as we log it to BUILDWARNINGS to prevent repetitions
+        y="$(echo $z | sed -e 's/\.sh//g' -e 's/failed$/failure/g' )"
+        mv "$z" "$y"
+        echo "---------------------------------------------------------------" 1>&2
+        echo "${PWD}/waitq: failed job: $y"                                    1>&2
+        echo "---------------------------------------------------------------" 1>&2
+        cat "$y"                                                               1>&2
+        echo "---------------------------------------------------------------" 1>&2
+        echo                                                                   1>&2
+        echo "---------------------------- $y -------------------------------" >>$BUILDWARNINGS
+        cat "$y"                                                               >>$BUILDWARNINGS
+        echo "--------------------- Compilation Aborted ---------------------" >>$BUILDWARNINGS
+     done
+     # since there were failed jobs, we have to quit our build. Sorry.
+     echo "${PWD}/waitq: Aborted due to a failed job! See $BUILDWARNINGS" 1>&2
+     sleep 3
+     kill %1 %2 %3 %4 %5 %6 %7 %8 %9 2>/dev/null >/dev/null
+     rm -f ${TLD}/slot*.sh
+     exit 9
+  fi
+ fi
+
+}
+
+
+function waitqall()
+{
+  # wait until we have slots open before enqueing more jobs
+  # we don't sleep inside the loop since sleep only allows a minimum of 1 second.
+  # and we want to be able to launch jobs as quickly as possible.  This is a bit of a hog.
+  # sorry.  But with any luck, the multiple copies of GCC we launch will keep our box
+  # busier than our script.
+
+  [[ -z "$NUMCPUS"  ]] && getcpus
+  [[ $NUMCPUS -eq 1 ]] && export NUMCPUS=2
+
+  OUT="/tmp/slot.$$"  # /tmp/slot.6588.10.sh.done
+
+  while [[ `ls -l $OUT.*.sh.out 2>/dev/null | wc -l` -gt 0 ]]; do waitq; done
+  waitq    # one more to make sure nothing is left to process
+
+  [[ -n "$TTY" ]] && printf "\b \b" 1>&2
+}
+
+
+
+##############################################################################
+# "To compile or not to compile, that is the question, whether 'tis nobler in
+# the mind, to suffer the slings and arrows of source code, or by compiling
+# and linking them, to satisfy their dependencies.." -- William Shakeclang
+#
+# if the .o file exists, compare it to the .c's timestamp, if .c is newer then
+# compile. if the .o file does not exist, compile.
+#
+# $1 - source file. $2 - object file.
+#
+# if the object file does not exist, it will return true.
+# if the source is newer than the object, it will return 0, thus compiling
+# (remember in BASH 0 means true or pass, non-zero means false or fail which
+# is the opposite of in C)
+#
+# This is why we don't need make.  Essentially that's the core of what makes
+# make work.
+#
+# Looks like -ot works as far back as macos 10.4 so we should be able to use
+# it on all systems with a bash/coreutils newer than that. Also returns true
+# if "$2" does not exist, so it's perfect.
+#
+# And functions in bash return true/false based on the last expression, so
+# no need for an if/then, nor a return command.
+# 
+# Old way just incase we run into an older system and we need to fix this:
+#   #[[ "`ls -tr $1 $2 2>/dev/null| tail -1`" == "$2" ]]
+##############################################################################
+
+function needed()
+{
+  [[ "$2" -ot "$1" ]]
+}
+
+#  echo "----"    1>&2
+#  echo "1: $1"   1>&2
+#  echo "2: $2"   1>&2
+#  ls -l $1 $2    1>&2
+#  pwd            1>&2
+#  [[ "$1" -nt "$2" ]] && echo "1 -nt 2 is true" 1>&2 || echo "1 -ot 2 is false" 1>&2  
+#  [[ "$2" -ot "$1" ]] && echo "2 -ot 1 is true" 1>&2 || echo "2 -ot 1 is false" 1>&2
+#  echo "----"    1>&2
+#  [[ "$2" -ot "$1" ]]
