@@ -35,7 +35,7 @@ fi
 DESCRIPTION="dc42 tools for Apple Lisa"    # description of the package
         VER="0.9.6"                        # just the version number
   STABILITY="RELEASE"                      # DEVELOP,ALPHA, BETA, RC1, RC2, RC3... RELEASE
-RELEASEDATE="2020.03.31"                   # release date.  must be YYYY.MM.DD
+RELEASEDATE="2021.03.05"                   # release date.  must be YYYY.MM.DD
      AUTHOR="Ray Arachelian"               # name of the author
   AUTHEMAIL="ray@arachelian.com"           # email address for this software
     COMPANY="sunder.net"                   # company (vendor for sun pkg)
@@ -54,7 +54,7 @@ export VER STABILITY RELEASEDATE AUTHOR SOFTWARE LCNAME DESCRIPTION COMPANY CONA
 # end of standard section for all build scripts.
 #------------------------------------------------------------------------------------------#
 
-SRCLIST="patchxenix blu-to-dc42  dc42-resize-to-400k  dc42-dumper  lisadiskinfo  lisafsh-tool dc42-copy-boot-loader lisa-serial-info los-bozo-on los-deserialize idefile-to-dc42 rraw-to-dc42 dc42-to-raw raw-to-dc42 dc42-to-tar"
+SRCLIST="patchxenix blu-to-dc42  dc42-resize-to-400k  dc42-dumper  lisadiskinfo  lisafsh-tool dc42-copy-boot-loader lisa-serial-info los-bozo-on los-deserialize uniplus-set-profile-size idefile-to-dc42 rraw-to-dc42 dc42-to-raw raw-to-dc42 dc42-to-tar"
 
 
 
